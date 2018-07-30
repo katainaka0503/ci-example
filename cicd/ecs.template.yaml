@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CodePipeline template'
+
+Parameters:
+  ContainerImage:
+    Type: String
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties: 
+      ClusterName: !Sub ${AWS::StackName}-ECSCluster
+
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Cpu: 512
+      Memory: 1GB
+      Family: !Sub ${AWS::StackName}-Task
+      NetworkMode: awsvpc
+      RequiresCompatibilities: 
+        - FARGATE
+      ExecutionRoleArn: arn:aws:iam::738965884675:role/ecsTaskExecutionRole
+      ContainerDefinitions:
+        - Name: docker-deploy-sample-application
+          Image: !Ref ContainerImage
+          PortMappings: 
+            - ContainerPort: 9000
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options: 
+              awslogs-group: /ecs/docker-deploy-sample-application
+              awslogs-region: ap-northeast-1
+              awslogs-stream-prefix: ecs
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${AWS::StackName}-ECSService
+      Cluster: !GetAtt ECSCluster.Arn
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - sg-c09c1ea6 #TODO
+          Subnets:
+            - subnet-1b31d252 #TODO
+            - subnet-f72600af #TODO
+      TaskDefinition: !Ref ECSTaskDefinition

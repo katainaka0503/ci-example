@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECR template'
+
+Resources:
+  ECRRepository:
+    Type: "AWS::ECR::Repository"
+
+Outputs:
+  ECRRepository:
+    Value: !Ref ECRRepository
+    Export:
+      Name: !Sub ${AWS::StackName}-ECRRepository

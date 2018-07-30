@@ -1,0 +1,305 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CodePipeline template'
+
+Parameters:
+  GithubOwner:
+    Type: String
+  GithubRepository:
+    Type: String
+  GithubBranch:
+    Type: String
+  GithubOAuthToken:
+    Type: String
+    NoEcho: true
+  CodeBuildImage:
+    Type: String
+  StgECSClusterName:
+    Type: String
+  StgECSServiceName:
+    Type: String
+  PrdECSClusterName:
+    Type: String
+  SrdECSServiceName:
+    Type: String
+  ArtifactStoreBucketName:
+    Type: String
+
+Resources:
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies: 
+        - PolicyName: !Sub ${AWS::StackName}-CodePipelineServiceRolePolicy
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - s3:PutObject
+                Resource:
+                  - arn:aws:s3:::codepipeline*
+                  - arn:aws:s3:::elasticbeanstalk*
+                Effect: Allow
+              - Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - elasticbeanstalk:CreateApplicationVersion
+                  - elasticbeanstalk:DescribeApplicationVersions
+                  - elasticbeanstalk:DescribeEnvironments
+                  - elasticbeanstalk:DescribeEvents
+                  - elasticbeanstalk:UpdateEnvironment
+                  - autoscaling:DescribeAutoScalingGroups
+                  - autoscaling:DescribeLaunchConfigurations
+                  - autoscaling:DescribeScalingActivities
+                  - autoscaling:ResumeProcesses
+                  - autoscaling:SuspendProcesses
+                  - cloudformation:GetTemplate
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - ec2:DescribeInstances
+                  - ec2:DescribeImages
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeKeyPairs
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - rds:DescribeDBInstances
+                  - rds:DescribeOrderableDBInstanceOptions
+                  - sns:ListSubscriptionsByTopic
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - lambda:invokefunction
+                  - lambda:listfunctions
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - s3:ListBucket
+                  - s3:GetBucketPolicy
+                  - s3:GetObjectAcl
+                  - s3:PutObjectAcl
+                  - s3:DeleteObject
+                Resource: arn:aws:s3:::elasticbeanstalk*
+                Effect: Allow
+              - Action:
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:UploadArchive
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:CancelUploadArchive
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - opsworks:CreateDeployment
+                  - opsworks:DescribeApps
+                  - opsworks:DescribeCommands
+                  - opsworks:DescribeDeployments
+                  - opsworks:DescribeInstances
+                  - opsworks:DescribeStacks
+                  - opsworks:UpdateApp
+                  - opsworks:UpdateStack
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                  - iam:PassRole
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:RegisterTaskDefinition
+                  - ecs:UpdateService
+                Resource: "*"
+                Effect: Allow
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-CodeBuildServiceRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CloudWatchLogsPolicy
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - "*"
+              - Sid: CodeCommitPolicy
+                Effect: Allow
+                Action:
+                  - codecommit:GitPull
+                Resource:
+                  - "*"
+              - Sid: S3GetObjectPolicy
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource:
+                  - "*"
+              - Sid: S3PutObjectPolicy
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - "*"
+
+  ArtifactStoreBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref ArtifactStoreBucketName
+
+  ECRRepository:
+    Type: "AWS::ECR::Repository"
+
+  BuildDockerImageProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${AWS::StackName}-CodeBuild-Project
+      Description: build docker image.
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: !Ref CodeBuildImage
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+          - Name: IMAGE_REPO_NAME
+            Value: !Ref ECRRepository
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 15
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${AWS::StackName}-Pipeline
+      ArtifactStore:
+        Location: !Ref ArtifactStoreBucket
+        Type: S3
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHub
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
+              OutputArtifacts:
+                - Name: SourceCode
+              Configuration:
+                Owner: !Ref GithubOwner
+                Repo: !Ref GithubRepository
+                Branch: GithubBranch
+                OAuthToken: !Ref GithubOAuthToken
+        - Name: Build
+          Actions:
+            - Name: CodeBuild-BuildDockerImage
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceCode
+              OutputArtifacts:
+                - Name: ImageDefinition
+              Configuration:
+                ProjectName: !Ref BuildDockerImageProject
+        - Name: Staging-Deploy
+          Actions:
+            - Name: ECS-Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: 1
+              InputArtifacts:
+                - Name: ImageDefinition
+              Configuration:
+                ClusterName: !Ref StgECSClusterName
+                ServiceName: !Ref StgECSServiceName
+                FileName: imagedefinitions.json
+        - Name: Approval
+          Actions:
+            - Name: Approval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: 1
+        - Name: Production-Deploy
+          Actions:
+            - Name: ECS-Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: 1
+              InputArtifacts:
+                - Name: ImageDefinition
+              Configuration:
+                ClusterName: !Ref PrdECSClusterName
+                ServiceName: !Ref PrdECSServiceName
+                FileName: imagedefinitions.json
+        
